@@ -1,0 +1,19 @@
+{
+  "site_url": "https://your-site.com",
+  "api_key": "your_api_key_here",
+  "api_secret": "your_api_secret_here",
+  "companies": [
+    {
+      "name": "Company A",
+      "default_currency": "SAR",
+      "default_warehouse": "Stores - CA"
+    },
+    {
+      "name": "Company B",
+      "default_currency": "USD",
+      "default_warehouse": "Main Store - CB"
+    }
+  ],
+  "default_customer_group": "Commercial",
+  "default_territory": "All Territories"
+}

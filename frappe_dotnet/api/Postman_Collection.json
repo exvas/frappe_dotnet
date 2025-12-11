@@ -1,0 +1,286 @@
+{
+	"info": {
+		"_postman_id": "frappe-dotnet-sales-invoice-api",
+		"name": "Frappe DotNet - Sales Invoice API",
+		"description": "Complete API collection for creating ERPNext Sales Invoices with automatic customer creation, address management, and ZATCA compliance",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "noauth"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "https://techbrightsolutions.saas-erp.in",
+			"type": "string"
+		},
+		{
+			"key": "api_key",
+			"value": "YOUR_API_KEY_HERE",
+			"type": "string"
+		},
+		{
+			"key": "api_secret",
+			"value": "YOUR_API_SECRET_HERE",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "1. Create Sales Invoice - Complete (with Address & VAT)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "token {{api_key}}:{{api_secret}}",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"company\": \"ZATCA Company\",\n    \"customer_name\": \"Al Khamis Al Arabiya Trading Company\",\n    \"customer_email\": \"info@alkhamis.com\",\n    \"customer_phone\": \"+966501234567\",\n    \"customer_type\": \"Company\",\n    \"customer_group\": \"Commercial\",\n    \"territory\": \"All Territories\",\n    \"custom_vat_registration_number\": \"312038504300003\",\n    \"commercial_registration_number\": \"1010394694\",\n    \"address_line1\": \"King Fahd Road\",\n    \"address_line2\": \"Building 123, Floor 4\",\n    \"custom_building_number\": \"7890\",\n    \"custom_area\": \"Al Olaya District\",\n    \"city\": \"Riyadh\",\n    \"state\": \"Riyadh Region\",\n    \"pincode\": \"12345\",\n    \"country\": \"Saudi Arabia\",\n    \"items\": [\n        {\n            \"item_code\": \"ITEM-001\",\n            \"qty\": 10,\n            \"rate\": 100,\n            \"description\": \"Product Item 1\"\n        },\n        {\n            \"item_code\": \"ITEM-002\",\n            \"qty\": 5,\n            \"rate\": 50,\n            \"discount_percentage\": 10\n        }\n    ],\n    \"qr_code\": \"ARVNVNLlE5BSkQgVFJBREVRyRBFU1QCD...\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/frappe_dotnet.api.sales_invoice.create_sales_invoice",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"frappe_dotnet.api.sales_invoice.create_sales_invoice"
+					]
+				},
+				"description": "Creates a new Sales Invoice with complete customer details including:\n- Customer creation with VAT registration number\n- Commercial registration number in custom_additional_ids table\n- Complete billing address with ZATCA fields\n- Multiple invoice items\n- QR code for ZATCA compliance"
+			},
+			"response": []
+		},
+		{
+			"name": "2. Create Sales Invoice - Basic (Minimal Fields)",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "token {{api_key}}:{{api_secret}}",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"company\": \"Your Company Name\",\n    \"customer_name\": \"Test Customer Ltd\",\n    \"items\": [\n        {\n            \"item_code\": \"ITEM-001\",\n            \"qty\": 1,\n            \"rate\": 100\n        }\n    ]\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/frappe_dotnet.api.sales_invoice.create_sales_invoice",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"frappe_dotnet.api.sales_invoice.create_sales_invoice"
+					]
+				},
+				"description": "Creates a basic Sales Invoice with minimum required fields:\n- Company name\n- Customer name (will be created if doesn't exist)\n- Items with item code, quantity, and rate"
+			},
+			"response": []
+		},
+		{
+			"name": "3. Create Sales Invoice - With Submit",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "token {{api_key}}:{{api_secret}}",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"company\": \"ZATCA Company\",\n    \"customer_name\": \"Existing Customer Name\",\n    \"customer_email\": \"customer@example.com\",\n    \"posting_date\": \"2025-12-11\",\n    \"due_date\": \"2025-12-31\",\n    \"items\": [\n        {\n            \"item_code\": \"SERVICE-001\",\n            \"qty\": 1,\n            \"rate\": 5000,\n            \"description\": \"Consulting Services\"\n        }\n    ],\n    \"submit_invoice\": true,\n    \"qr_code\": \"ARVNVNLlE5BSkQgVFJBREVRyRBFU1QCD...\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/frappe_dotnet.api.sales_invoice.create_sales_invoice",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"frappe_dotnet.api.sales_invoice.create_sales_invoice"
+					]
+				},
+				"description": "Creates and automatically submits a Sales Invoice.\n\nNote: Set submit_invoice to true to automatically submit the invoice after creation."
+			},
+			"response": []
+		},
+		{
+			"name": "4. Create Sales Invoice - Multi-Item with Discounts",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "token {{api_key}}:{{api_secret}}",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"company\": \"ZATCA Company\",\n    \"customer_name\": \"ABC Trading LLC\",\n    \"customer_email\": \"info@abctrading.com\",\n    \"customer_phone\": \"+966555123456\",\n    \"custom_vat_registration_number\": \"300000000000003\",\n    \"items\": [\n        {\n            \"item_code\": \"ITEM-001\",\n            \"qty\": 10,\n            \"rate\": 100,\n            \"discount_percentage\": 5\n        },\n        {\n            \"item_code\": \"ITEM-002\",\n            \"qty\": 20,\n            \"rate\": 75,\n            \"discount_percentage\": 10\n        },\n        {\n            \"item_code\": \"ITEM-003\",\n            \"qty\": 5,\n            \"rate\": 200,\n            \"discount_percentage\": 0\n        }\n    ]\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/frappe_dotnet.api.sales_invoice.create_sales_invoice",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"frappe_dotnet.api.sales_invoice.create_sales_invoice"
+					]
+				},
+				"description": "Creates an invoice with multiple items, each having different discount percentages."
+			},
+			"response": []
+		},
+		{
+			"name": "5. Create Sales Invoice - With Custom Fields",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "token {{api_key}}:{{api_secret}}",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"company\": \"ZATCA Company\",\n    \"customer_name\": \"Premium Customer Ltd\",\n    \"customer_email\": \"premium@example.com\",\n    \"items\": [\n        {\n            \"item_code\": \"ITEM-001\",\n            \"qty\": 10,\n            \"rate\": 100\n        }\n    ],\n    \"additional_fields\": {\n        \"custom_reference\": \"REF-2025-001\",\n        \"custom_notes\": \"Payment via bank transfer\",\n        \"custom_po_number\": \"PO-12345\"\n    }\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/frappe_dotnet.api.sales_invoice.create_sales_invoice",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"frappe_dotnet.api.sales_invoice.create_sales_invoice"
+					]
+				},
+				"description": "Creates an invoice with custom field values passed via additional_fields parameter.\n\nNote: The custom fields must exist in the Sales Invoice doctype."
+			},
+			"response": []
+		},
+		{
+			"name": "6. Update Invoice QR Code",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "token {{api_key}}:{{api_secret}}",
+						"type": "text"
+					},
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "text"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"invoice_name\": \"SINV-2025-00001\",\n    \"qr_code\": \"ARVNVNLlE5BSkQgVFJBREVRyRBFU1QCD...\"\n}"
+				},
+				"url": {
+					"raw": "{{base_url}}/api/method/frappe_dotnet.api.sales_invoice.update_invoice_qr_code",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"frappe_dotnet.api.sales_invoice.update_invoice_qr_code"
+					]
+				},
+				"description": "Updates the QR code for an existing Sales Invoice.\n\nRequired:\n- invoice_name: The Sales Invoice ID (e.g., SINV-2025-00001)\n- qr_code: The ZATCA-compliant QR code data"
+			},
+			"response": []
+		},
+		{
+			"name": "7. Test Authentication",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Authorization",
+						"value": "token {{api_key}}:{{api_secret}}",
+						"type": "text"
+					}
+				],
+				"url": {
+					"raw": "{{base_url}}/api/method/frappe.auth.get_logged_user",
+					"host": [
+						"{{base_url}}"
+					],
+					"path": [
+						"api",
+						"method",
+						"frappe.auth.get_logged_user"
+					]
+				},
+				"description": "Tests if your API credentials are working correctly.\n\nExpected response: Your API user email address"
+			},
+			"response": []
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					""
+				]
+			}
+		}
+	]
+}
