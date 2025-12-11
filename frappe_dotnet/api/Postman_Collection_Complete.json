@@ -1,0 +1,324 @@
+{
+	"info": {
+		"_postman_id": "frappe-dotnet-complete-api",
+		"name": "Frappe DotNet - Complete API Collection",
+		"description": "Complete API collection for ERPNext: Sales Invoices, Items, Customers, and Tax Management",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "noauth"
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "https://techbrightsolutions.saas-erp.in",
+			"type": "string"
+		},
+		{
+			"key": "api_key",
+			"value": "YOUR_API_KEY_HERE",
+			"type": "string"
+		},
+		{
+			"key": "api_secret",
+			"value": "YOUR_API_SECRET_HERE",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Item APIs",
+			"item": [
+				{
+					"name": "1. Create Item - Basic",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "token {{api_key}}:{{api_secret}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"item_code\": \"PROD-001\",\n    \"item_name\": \"Test Product\",\n    \"item_group\": \"Products\",\n    \"description\": \"Test product for demonstration\",\n    \"stock_uom\": \"Nos\",\n    \"standard_rate\": 100,\n    \"is_stock_item\": 1,\n    \"maintain_stock\": 1\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/frappe_dotnet.api.item.create_item",
+							"host": ["{{base_url}}"],
+							"path": ["api", "method", "frappe_dotnet.api.item.create_item"]
+						},
+						"description": "Creates a basic item with minimal fields"
+					}
+				},
+				{
+					"name": "2. Create Item - With Tax Template",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "token {{api_key}}:{{api_secret}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"item_code\": \"PROD-VAT-001\",\n    \"item_name\": \"VAT Product\",\n    \"item_group\": \"Products\",\n    \"description\": \"Product with VAT configuration\",\n    \"stock_uom\": \"Nos\",\n    \"standard_rate\": 150,\n    \"company\": \"ZATCA Company\",\n    \"item_tax_template\": \"VAT 15 - GSS\",\n    \"tax_category\": \"VAT-GSS\",\n    \"default_warehouse\": \"Stores - ZATCA\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/frappe_dotnet.api.item.create_item",
+							"host": ["{{base_url}}"],
+							"path": ["api", "method", "frappe_dotnet.api.item.create_item"]
+						},
+						"description": "Creates an item with Item Tax Template and Tax Category configured for a specific company"
+					}
+				},
+				{
+					"name": "3. Create Item - Service (Non-Stock)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "token {{api_key}}:{{api_secret}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"item_code\": \"SERV-001\",\n    \"item_name\": \"Consulting Service\",\n    \"item_group\": \"Services\",\n    \"description\": \"Professional consulting service\",\n    \"stock_uom\": \"Hour\",\n    \"is_stock_item\": 0,\n    \"maintain_stock\": 0,\n    \"standard_rate\": 500,\n    \"company\": \"ZATCA Company\",\n    \"item_tax_template\": \"VAT 15 - GSS\",\n    \"tax_category\": \"VAT-GSS\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/frappe_dotnet.api.item.create_item",
+							"host": ["{{base_url}}"],
+							"path": ["api", "method", "frappe_dotnet.api.item.create_item"]
+						},
+						"description": "Creates a service item (non-stock) with VAT configuration"
+					}
+				},
+				{
+					"name": "4. Create Item - Multi-Company",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "token {{api_key}}:{{api_secret}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"item_code\": \"PROD-MULTI-001\",\n    \"item_name\": \"Multi-Company Product\",\n    \"item_group\": \"Products\",\n    \"description\": \"Product available across multiple companies\",\n    \"stock_uom\": \"Nos\",\n    \"standard_rate\": 200,\n    \"tax_templates\": [\n        {\n            \"item_tax_template\": \"VAT 15 - GSS\",\n            \"tax_category\": \"VAT-GSS\"\n        }\n    ],\n    \"item_defaults\": [\n        {\n            \"company\": \"Company A\",\n            \"default_warehouse\": \"Stores - CA\",\n            \"default_price_list\": \"Standard Selling\",\n            \"income_account\": \"Sales - CA\",\n            \"expense_account\": \"Cost of Goods Sold - CA\"\n        },\n        {\n            \"company\": \"Company B\",\n            \"default_warehouse\": \"Stores - CB\",\n            \"default_price_list\": \"Standard Selling\",\n            \"income_account\": \"Sales - CB\",\n            \"expense_account\": \"Cost of Goods Sold - CB\"\n        }\n    ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/frappe_dotnet.api.item.create_item",
+							"host": ["{{base_url}}"],
+							"path": ["api", "method", "frappe_dotnet.api.item.create_item"]
+						},
+						"description": "Creates an item with configuration for multiple companies"
+					}
+				},
+				{
+					"name": "5. Get Tax Templates",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "token {{api_key}}:{{api_secret}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/method/frappe_dotnet.api.item.get_tax_templates?company=ZATCA Company",
+							"host": ["{{base_url}}"],
+							"path": ["api", "method", "frappe_dotnet.api.item.get_tax_templates"],
+							"query": [
+								{
+									"key": "company",
+									"value": "ZATCA Company",
+									"description": "Filter by company (optional)"
+								}
+							]
+						},
+						"description": "Retrieves available Item Tax Templates, optionally filtered by company"
+					}
+				},
+				{
+					"name": "6. Get Tax Categories",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "token {{api_key}}:{{api_secret}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/method/frappe_dotnet.api.item.get_tax_categories",
+							"host": ["{{base_url}}"],
+							"path": ["api", "method", "frappe_dotnet.api.item.get_tax_categories"]
+						},
+						"description": "Retrieves available Tax Categories"
+					}
+				},
+				{
+					"name": "7. Get Item Groups",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "token {{api_key}}:{{api_secret}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/method/frappe_dotnet.api.item.get_item_groups",
+							"host": ["{{base_url}}"],
+							"path": ["api", "method", "frappe_dotnet.api.item.get_item_groups"]
+						},
+						"description": "Retrieves available Item Groups"
+					}
+				}
+			],
+			"description": "Item creation and management APIs with tax template support"
+		},
+		{
+			"name": "Sales Invoice APIs",
+			"item": [
+				{
+					"name": "1. Create Invoice - Complete",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "token {{api_key}}:{{api_secret}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"company\": \"ZATCA Company\",\n    \"customer_name\": \"Al Khamis Al Arabiya Trading Company\",\n    \"customer_email\": \"info@alkhamis.com\",\n    \"customer_phone\": \"+966501234567\",\n    \"customer_type\": \"Company\",\n    \"customer_group\": \"Commercial\",\n    \"territory\": \"All Territories\",\n    \"custom_vat_registration_number\": \"312038504300003\",\n    \"commercial_registration_number\": \"1010394694\",\n    \"address_line1\": \"King Fahd Road\",\n    \"address_line2\": \"Building 123, Floor 4\",\n    \"custom_building_number\": \"7890\",\n    \"custom_area\": \"Al Olaya District\",\n    \"city\": \"Riyadh\",\n    \"state\": \"Riyadh Region\",\n    \"pincode\": \"12345\",\n    \"country\": \"Saudi Arabia\",\n    \"items\": [\n        {\n            \"item_code\": \"ITEM-001\",\n            \"qty\": 10,\n            \"rate\": 100\n        }\n    ],\n    \"qr_code\": \"ARVNVNLlE5BSkQgVFJBREVRyRBFU1QCD...\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/frappe_dotnet.api.sales_invoice.create_sales_invoice",
+							"host": ["{{base_url}}"],
+							"path": ["api", "method", "frappe_dotnet.api.sales_invoice.create_sales_invoice"]
+						}
+					}
+				},
+				{
+					"name": "2. Create Invoice - Basic",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "token {{api_key}}:{{api_secret}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"company\": \"Your Company\",\n    \"customer_name\": \"Test Customer\",\n    \"items\": [\n        {\n            \"item_code\": \"ITEM-001\",\n            \"qty\": 1,\n            \"rate\": 100\n        }\n    ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/frappe_dotnet.api.sales_invoice.create_sales_invoice",
+							"host": ["{{base_url}}"],
+							"path": ["api", "method", "frappe_dotnet.api.sales_invoice.create_sales_invoice"]
+						}
+					}
+				},
+				{
+					"name": "3. Update Invoice QR Code",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "token {{api_key}}:{{api_secret}}",
+								"type": "text"
+							},
+							{
+								"key": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"invoice_name\": \"SINV-2025-00001\",\n    \"qr_code\": \"ARVNVNLlE5BSkQgVFJBREVRyRBFU1QCD...\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/api/method/frappe_dotnet.api.sales_invoice.update_invoice_qr_code",
+							"host": ["{{base_url}}"],
+							"path": ["api", "method", "frappe_dotnet.api.sales_invoice.update_invoice_qr_code"]
+						}
+					}
+				}
+			],
+			"description": "Sales Invoice APIs with customer and address management"
+		},
+		{
+			"name": "Utility APIs",
+			"item": [
+				{
+					"name": "Test Authentication",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "token {{api_key}}:{{api_secret}}",
+								"type": "text"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/api/method/frappe.auth.get_logged_user",
+							"host": ["{{base_url}}"],
+							"path": ["api", "method", "frappe.auth.get_logged_user"]
+						},
+						"description": "Tests if API credentials are valid"
+					}
+				}
+			],
+			"description": "Utility endpoints for testing and configuration"
+		}
+	]
+}

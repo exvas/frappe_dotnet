@@ -12,12 +12,12 @@ import json
 @frappe.whitelist(allow_guest=False)
 def create_sales_invoice(**kwargs):
 	"""
-	Create a Sales Invoice with automatic customer creation if needed
+	Create a Sales Invoice with automatic customer and item creation if needed
 
 	Required Parameters:
 	- company: Company name
 	- customer_name: Customer name (will be created if doesn't exist)
-	- items: List of items with item_code, qty, rate
+	- items: List of items with item_code, qty, rate (items will be created if they don't exist)
 
 	Optional Parameters:
 	- customer_email: Customer email
@@ -39,6 +39,13 @@ def create_sales_invoice(**kwargs):
 	- due_date: Payment due date
 	- qr_code: QR code data for ZATCA compliance
 	- additional_fields: Dictionary of custom field values
+
+	Optional Item Fields (for auto-creation):
+	- items[].item_name: Item name (defaults to item_code)
+	- items[].item_group: Item group (defaults to "Products")
+	- items[].uom: Unit of measure (defaults to "Nos")
+	- items[].item_tax_template: Tax template for the item
+	- items[].tax_category: Tax category for the item
 
 	Returns:
 	- success: Boolean
@@ -337,19 +344,79 @@ def _create_invoice(data, customer):
 			)
 
 
+def _auto_create_item(item_code, item_data, company):
+	"""Automatically create an item if it doesn't exist"""
+	try:
+		# Determine item group
+		item_group = item_data.get("item_group", "Products")
+
+		# Verify item group exists
+		if not frappe.db.exists("Item Group", item_group):
+			item_group = "All Item Groups"
+
+		# Create the item
+		item = frappe.get_doc({
+			"doctype": "Item",
+			"item_code": item_code,
+			"item_name": item_data.get("item_name") or item_code,
+			"item_group": item_group,
+			"description": item_data.get("description") or item_code,
+			"stock_uom": item_data.get("uom", "Nos"),
+			"is_stock_item": 1,
+			"maintain_stock": 1,
+			"standard_rate": flt(item_data.get("rate", 0)),
+			"valuation_rate": flt(item_data.get("rate", 0))
+		})
+
+		# Add item tax template if provided
+		if item_data.get("item_tax_template"):
+			if frappe.db.exists("Item Tax Template", item_data.get("item_tax_template")):
+				item.append("taxes", {
+					"item_tax_template": item_data.get("item_tax_template"),
+					"tax_category": item_data.get("tax_category")
+				})
+
+		# Add company defaults
+		item.append("item_defaults", {
+			"company": company,
+			"default_warehouse": item_data.get("warehouse") or _get_default_warehouse(company),
+			"income_account": item_data.get("income_account"),
+			"expense_account": item_data.get("expense_account")
+		})
+
+		# Insert item
+		item.insert(ignore_permissions=False)
+
+		return item
+
+	except Exception as e:
+		frappe.log_error(
+			message=f"Failed to auto-create item {item_code}: {str(e)}\n{frappe.get_traceback()}",
+			title="Item Auto-Creation Failed"
+		)
+		# If auto-creation fails, throw error to stop invoice creation
+		frappe.throw(
+			_("Failed to create item '{0}': {1}").format(item_code, str(e)),
+			frappe.ValidationError
+		)
+
+
 def _add_invoice_item(invoice, item_data, company):
 	"""Add an item to the invoice"""
 	item_code = item_data.get("item_code")
 
-	# Validate item exists
+	# Check if item exists, if not create it
 	if not frappe.db.exists("Item", item_code):
-		frappe.throw(
-			_("Item '{0}' does not exist in the system").format(item_code),
-			frappe.DoesNotExistError
+		# Auto-create the item
+		item = _auto_create_item(item_code, item_data, company)
+		frappe.msgprint(
+			_("Item '{0}' created automatically").format(item_code),
+			indicator="green",
+			alert=True
 		)
-
-	# Get item details
-	item = frappe.get_cached_doc("Item", item_code)
+	else:
+		# Get existing item details
+		item = frappe.get_cached_doc("Item", item_code)
 
 	# Determine rate
 	rate = flt(item_data.get("rate"))
