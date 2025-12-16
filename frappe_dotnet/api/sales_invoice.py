@@ -110,13 +110,42 @@ def _parse_request_data(kwargs):
 	"""Parse and normalize request data"""
 	data = frappe._dict(kwargs)
 
-	# Parse JSON strings if needed
-	if isinstance(data.get("items"), str):
+	# Debug log to help troubleshoot data format issues
+	frappe.log_error(
+		message=f"Received kwargs: {type(kwargs)}\nItems type: {type(kwargs.get('items'))}\nItems value: {kwargs.get('items')}",
+		title="Sales Invoice API - Request Data Debug"
+	)
+
+	# Handle items parsing - could come in various formats
+	items = data.get("items")
+	if items is None:
+		# Items might not be in kwargs directly, could be in request data
+		pass
+	elif isinstance(items, str):
+		# Items came as JSON string
 		try:
-			data.items = json.loads(data.items)
+			data.items = json.loads(items)
 		except json.JSONDecodeError:
 			frappe.throw(_("Invalid items data format. Expected JSON array."))
+	elif isinstance(items, (list, tuple)):
+		# Items came as a list/tuple - ensure each item is a dict
+		parsed_items = []
+		for item in items:
+			if isinstance(item, str):
+				try:
+					parsed_items.append(json.loads(item))
+				except json.JSONDecodeError:
+					parsed_items.append(item)
+			elif isinstance(item, dict):
+				parsed_items.append(item)
+			else:
+				parsed_items.append(item)
+		data.items = parsed_items
+	elif isinstance(items, dict):
+		# Single item passed as dict - convert to list
+		data.items = [items]
 
+	# Handle additional_fields parsing
 	if isinstance(data.get("additional_fields"), str):
 		try:
 			data.additional_fields = json.loads(data.additional_fields)
