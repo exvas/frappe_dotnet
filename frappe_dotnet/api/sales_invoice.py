@@ -110,9 +110,22 @@ def _parse_request_data(kwargs):
 	"""Parse and normalize request data"""
 	data = frappe._dict(kwargs)
 
+	# If items not in kwargs, try to get from request JSON body
+	# Frappe doesn't always pass nested arrays through kwargs
+	if not data.get("items") and frappe.request and frappe.request.data:
+		try:
+			request_json = json.loads(frappe.request.data)
+			if isinstance(request_json, dict):
+				# Merge request JSON with kwargs (kwargs takes precedence for non-items)
+				for key, value in request_json.items():
+					if key not in data or data[key] is None:
+						data[key] = value
+		except (json.JSONDecodeError, AttributeError):
+			pass
+
 	# Debug log to help troubleshoot data format issues
 	frappe.log_error(
-		message=f"Received kwargs: {type(kwargs)}\nItems type: {type(kwargs.get('items'))}\nItems value: {kwargs.get('items')}",
+		message=f"Received kwargs: {type(kwargs)}\nItems type: {type(data.get('items'))}\nItems value: {data.get('items')}",
 		title="Sales Invoice API - Request Data Debug"
 	)
 
