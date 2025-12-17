@@ -59,11 +59,16 @@ def create_sales_invoice(**kwargs):
 		- "O" or "04" = Out of Scope
 	- items[].tax_category: Tax category for the item
 
+	Control Options:
+	- submit_invoice: Auto-submit invoice (default: True). Set to False to keep as Draft.
+
 	Returns:
 	- success: Boolean
 	- message: Success or error message
 	- invoice_name: Created invoice name
 	- invoice_url: URL to view invoice
+	- status: Invoice status (Draft/Submitted)
+	- error_details: Detailed error information (only on failure)
 	"""
 	try:
 		# Validate API key authentication
@@ -90,26 +95,53 @@ def create_sales_invoice(**kwargs):
 
 		return {
 			"success": True,
-			"message": _("Sales Invoice {0} created successfully").format(invoice.name),
+			"message": _("Sales Invoice {0} created and submitted successfully").format(invoice.name) if invoice.docstatus == 1 else _("Sales Invoice {0} created as Draft").format(invoice.name),
 			"invoice_name": invoice.name,
 			"invoice_url": frappe.utils.get_url_to_form("Sales Invoice", invoice.name),
 			"customer": customer,
-			"grand_total": invoice.grand_total
+			"grand_total": invoice.grand_total,
+			"net_total": invoice.net_total,
+			"total_taxes": invoice.total_taxes_and_charges,
+			"status": "Submitted" if invoice.docstatus == 1 else "Draft",
+			"posting_date": str(invoice.posting_date)
 		}
 
 	except frappe.ValidationError as e:
 		frappe.db.rollback()
-		return _error_response(_("Validation Error: {0}").format(str(e)))
+		return _error_response(
+			_("Validation Error: {0}").format(str(e)),
+			error_type="ValidationError",
+			error_details=_get_error_details(e)
+		)
 	except frappe.PermissionError as e:
 		frappe.db.rollback()
-		return _error_response(_("Permission Denied: You don't have permission to create invoices for this company"))
+		return _error_response(
+			_("Permission Denied: You don't have permission to create invoices for this company"),
+			error_type="PermissionError",
+			error_details=_get_error_details(e)
+		)
 	except frappe.DoesNotExistError as e:
 		frappe.db.rollback()
-		return _error_response(_("Not Found: {0}").format(str(e)))
+		return _error_response(
+			_("Not Found: {0}").format(str(e)),
+			error_type="DoesNotExistError",
+			error_details=_get_error_details(e)
+		)
+	except frappe.DuplicateEntryError as e:
+		frappe.db.rollback()
+		return _error_response(
+			_("Duplicate Entry: {0}").format(str(e)),
+			error_type="DuplicateEntryError",
+			error_details=_get_error_details(e)
+		)
 	except Exception as e:
 		frappe.db.rollback()
 		frappe.log_error(message=frappe.get_traceback(), title="Sales Invoice Creation Failed")
-		return _error_response(_("Failed to create invoice: {0}").format(str(e)))
+		return _error_response(
+			_("Failed to create invoice: {0}").format(str(e)),
+			error_type="UnexpectedError",
+			error_details=_get_error_details(e)
+		)
 
 
 def _validate_api_auth():
@@ -503,8 +535,23 @@ def _create_invoice(data, customer):
 			invoice.name = custom_invoice_number
 			invoice.reload()
 
-		if data.get("submit_invoice"):
-			invoice.submit()
+		# Auto-submit invoice by default (unless explicitly set to False)
+		# submit_invoice defaults to True
+		should_submit = data.get("submit_invoice", True)
+		if should_submit is not False and should_submit != "false" and should_submit != "False":
+			try:
+				invoice.submit()
+			except Exception as submit_error:
+				# If submission fails, return the draft invoice with submission error details
+				frappe.log_error(
+					message=f"Invoice {invoice.name} created but submission failed: {str(submit_error)}\n{frappe.get_traceback()}",
+					title="Invoice Submission Failed"
+				)
+				# Re-raise with clear message so frontend knows submission failed
+				frappe.throw(
+					_("Invoice {0} created but submission failed: {1}").format(invoice.name, str(submit_error)),
+					frappe.ValidationError
+				)
 
 		return invoice
 
@@ -782,13 +829,52 @@ def _update_qr_code(invoice_name, qr_code_data):
 		)
 
 
-def _error_response(message):
-	"""Return standardized error response"""
-	return {
+def _error_response(message, error_type=None, error_details=None):
+	"""Return standardized error response with detailed error information"""
+	response = {
 		"success": False,
 		"message": message,
-		"invoice_name": None
+		"invoice_name": None,
+		"status": "Failed"
 	}
+
+	if error_type:
+		response["error_type"] = error_type
+
+	if error_details:
+		response["error_details"] = error_details
+
+	return response
+
+
+def _get_error_details(exception):
+	"""Extract detailed error information from an exception"""
+	error_details = {
+		"error_message": str(exception),
+		"error_class": exception.__class__.__name__
+	}
+
+	# Try to get additional details from Frappe's error handling
+	try:
+		# Get server messages if available
+		if hasattr(frappe, 'message_log') and frappe.message_log:
+			messages = []
+			for msg in frappe.message_log:
+				if isinstance(msg, dict):
+					messages.append(msg.get('message', str(msg)))
+				else:
+					messages.append(str(msg))
+			if messages:
+				error_details["server_messages"] = messages
+
+		# Get the last error message from frappe local
+		if hasattr(frappe.local, 'message_log') and frappe.local.message_log:
+			error_details["frappe_messages"] = [str(m) for m in frappe.local.message_log[-5:]]
+
+	except Exception:
+		pass
+
+	return error_details
 
 
 @frappe.whitelist(allow_guest=False)
