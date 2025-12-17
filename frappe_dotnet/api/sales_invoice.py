@@ -147,6 +147,7 @@ def _parse_request_data(kwargs):
 	)
 
 	# Handle items parsing - could come in various formats
+	# Use dictionary key access instead of attribute to avoid conflict with dict.items() method
 	items = data.get("items")
 	if items is None:
 		# Items might not be in kwargs directly, could be in request data
@@ -154,7 +155,7 @@ def _parse_request_data(kwargs):
 	elif isinstance(items, str):
 		# Items came as JSON string
 		try:
-			data.items = json.loads(items)
+			data["items"] = json.loads(items)
 		except json.JSONDecodeError:
 			frappe.throw(_("Invalid items data format. Expected JSON array."))
 	elif isinstance(items, (list, tuple)):
@@ -170,10 +171,10 @@ def _parse_request_data(kwargs):
 				parsed_items.append(item)
 			else:
 				parsed_items.append(item)
-		data.items = parsed_items
+		data["items"] = parsed_items
 	elif isinstance(items, dict):
 		# Single item passed as dict - convert to list
-		data.items = [items]
+		data["items"] = [items]
 
 	# Handle additional_fields parsing
 	if isinstance(data.get("additional_fields"), str):
@@ -204,10 +205,12 @@ def _validate_required_fields(data):
 		)
 
 	# Validate items structure
-	if not isinstance(data.items, list) or len(data.items) == 0:
+	# Use data["items"] or data.get("items") to avoid conflict with dict.items() method
+	invoice_items = data.get("items")
+	if not isinstance(invoice_items, list) or len(invoice_items) == 0:
 		frappe.throw(_("Items must be a non-empty list"))
 
-	for idx, item in enumerate(data.items, 1):
+	for idx, item in enumerate(invoice_items, 1):
 		if not isinstance(item, dict):
 			frappe.throw(_("Item {0} must be a dictionary").format(idx))
 
@@ -365,7 +368,7 @@ def _create_invoice(data, customer):
 		})
 
 		# Add items
-		for item_data in data.items:
+		for item_data in data.get("items"):
 			_add_invoice_item(invoice, item_data, data.company)
 
 		# Add additional custom fields
