@@ -50,7 +50,12 @@ def create_sales_invoice(**kwargs):
 	- items[].item_name: Item name (defaults to item_code)
 	- items[].item_group: Item group (defaults to "Products")
 	- items[].uom: Unit of measure (defaults to "Nos")
-	- items[].item_tax_template: Item Tax Template for per-item tax rates (e.g., "VAT 15%", "VAT 0%")
+	- items[].item_tax_template: Item Tax Template name (e.g., "VAT 15% - GSS")
+	- items[].tax_code: ZATCA tax category code - auto-maps to Item Tax Template:
+		- "S" or "01" or "05" = Standard Rate 15%
+		- "Z" or "02" = Zero Rated 0%
+		- "E" or "03" = Exempt
+		- "O" or "04" = Out of Scope
 	- items[].tax_category: Tax category for the item
 
 	Returns:
@@ -595,12 +600,132 @@ def _add_invoice_item(invoice, item_data, company):
 		"discount_percentage": flt(item_data.get("discount_percentage", 0))
 	}
 
-	# Add item-level tax template if provided
-	# This allows different tax rates per item (e.g., 15% VAT vs 0% exempt)
-	if item_data.get("item_tax_template"):
-		item_row["item_tax_template"] = item_data.get("item_tax_template")
+	# Handle item-level tax template
+	# Supports: direct template name OR tax_code mapping (e.g., "01" = 0%, "05" = 15%)
+	item_tax_template = _resolve_item_tax_template(item_data, company)
+	if item_tax_template:
+		item_row["item_tax_template"] = item_tax_template
 
 	invoice.append("items", item_row)
+
+
+def _resolve_item_tax_template(item_data, company):
+	"""Resolve item tax template from direct name or tax code
+
+	Supports:
+	1. item_tax_template: Direct template name (e.g., "VAT 15% - GSS")
+	2. tax_code: ZATCA tax category code that maps to template
+	   - "01" or "S" = Standard Rate (15%)
+	   - "02" or "Z" = Zero Rated (0%)
+	   - "03" or "E" = Exempt
+	   - "04" or "O" = Out of Scope
+	   - "05" = Standard Rate 15% (legacy)
+
+	The function searches for matching Item Tax Template by:
+	1. Exact name match
+	2. Template containing the tax code
+	3. Template for the company with matching rate
+	"""
+	# Option 1: Direct template name provided
+	if item_data.get("item_tax_template"):
+		template_name = item_data.get("item_tax_template")
+		# Check if it exists (with or without company suffix)
+		if frappe.db.exists("Item Tax Template", template_name):
+			return template_name
+		# Try with company abbreviation
+		company_abbr = frappe.get_cached_value("Company", company, "abbr")
+		if company_abbr:
+			template_with_company = f"{template_name} - {company_abbr}"
+			if frappe.db.exists("Item Tax Template", template_with_company):
+				return template_with_company
+
+	# Option 2: Tax code provided - map to template
+	tax_code = item_data.get("tax_code")
+	if tax_code:
+		return _get_tax_template_from_code(tax_code, company)
+
+	return None
+
+
+def _get_tax_template_from_code(tax_code, company):
+	"""Map ZATCA tax category code to Item Tax Template
+
+	ZATCA Tax Category Codes:
+	- S / 01 / 05 = Standard Rate (15% VAT)
+	- Z / 02 = Zero Rated (0% VAT)
+	- E / 03 = Exempt
+	- O / 04 = Out of Scope
+
+	Returns the Item Tax Template name for the company
+	"""
+	# Normalize tax code
+	tax_code = str(tax_code).upper().strip()
+
+	# Map tax codes to search patterns and rates
+	tax_code_mapping = {
+		# Standard Rate 15%
+		"S": {"patterns": ["15", "standard", "vat 15"], "rate": 15},
+		"01": {"patterns": ["15", "standard", "vat 15"], "rate": 15},
+		"05": {"patterns": ["15", "standard", "vat 15"], "rate": 15},
+		# Zero Rated 0%
+		"Z": {"patterns": ["0", "zero", "vat 0"], "rate": 0},
+		"02": {"patterns": ["0", "zero", "vat 0"], "rate": 0},
+		# Exempt
+		"E": {"patterns": ["exempt", "0"], "rate": 0},
+		"03": {"patterns": ["exempt", "0"], "rate": 0},
+		# Out of Scope
+		"O": {"patterns": ["out of scope", "oos", "0"], "rate": 0},
+		"04": {"patterns": ["out of scope", "oos", "0"], "rate": 0},
+	}
+
+	mapping = tax_code_mapping.get(tax_code)
+	if not mapping:
+		return None
+
+	company_abbr = frappe.get_cached_value("Company", company, "abbr")
+
+	# Strategy 1: Find template by pattern match for this company
+	templates = frappe.get_all(
+		"Item Tax Template",
+		filters={"company": company},
+		fields=["name"]
+	)
+
+	for template in templates:
+		template_name_lower = template.name.lower()
+		for pattern in mapping["patterns"]:
+			if pattern in template_name_lower:
+				return template.name
+
+	# Strategy 2: Find by tax rate in template
+	for template in templates:
+		template_doc = frappe.get_cached_doc("Item Tax Template", template.name)
+		for tax_row in template_doc.taxes:
+			if flt(tax_row.tax_rate) == mapping["rate"]:
+				return template.name
+
+	# Strategy 3: Try common naming conventions
+	common_names = []
+	if mapping["rate"] == 15:
+		common_names = [
+			f"VAT 15% - {company_abbr}",
+			f"Saudi VAT 15% - {company_abbr}",
+			f"Standard Rate - {company_abbr}",
+			f"KSA VAT 15% - {company_abbr}",
+		]
+	elif mapping["rate"] == 0:
+		common_names = [
+			f"VAT 0% - {company_abbr}",
+			f"Zero Rated - {company_abbr}",
+			f"VAT Zero - {company_abbr}",
+			f"Exempt - {company_abbr}",
+		]
+
+	for name in common_names:
+		if frappe.db.exists("Item Tax Template", name):
+			return name
+
+	return None
 
 
 def _get_default_warehouse(company):
