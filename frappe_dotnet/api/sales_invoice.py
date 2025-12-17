@@ -324,7 +324,9 @@ def _create_customer_address(customer, data):
 			"county": data.get("county", ""),
 			"state": data.get("state", ""),
 			"pincode": data.get("pincode", ""),
-			"country": data.get("country", "Saudi Arabia")  # Default to Saudi Arabia
+			"country": data.get("country", "Saudi Arabia"),  # Default to Saudi Arabia
+			"is_primary_address": 1,  # Set as Preferred Billing Address
+			"is_shipping_address": 0
 		})
 
 		# Add custom fields if they exist in Address doctype
