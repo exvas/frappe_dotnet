@@ -42,6 +42,9 @@ def create_sales_invoice(**kwargs):
 	- additional_fields: Dictionary of custom field values
 
 	Tax Options (use one of these):
+	- tax_id: Simple tax identifier (RECOMMENDED):
+		- 1 = Standard VAT 15%
+		- 2 = Zero Rated VAT 0%
 	- taxes_and_charges: Name of Sales Taxes and Charges Template (e.g., "Saudi VAT 15%")
 	- taxes: Custom array of tax entries:
 		[{"charge_type": "On Net Total", "account_head": "VAT 15% - GSS", "rate": 15, "description": "VAT 15%"}]
@@ -401,52 +404,46 @@ def _create_customer_address(customer, data):
 
 
 def _add_invoice_taxes(invoice, data):
-	"""Add taxes to the invoice from template or custom taxes array
+	"""Add taxes to the invoice from tax_id, template name, or custom taxes array
 
 	Supports:
-	1. taxes_and_charges: Name of Sales Taxes and Charges Template
-	2. taxes: Custom array of tax entries with charge_type, account_head, rate, etc.
+	1. tax_id: Simple tax identifier (1 = 15% VAT, 2 = 0% VAT)
+	2. taxes_and_charges: Name of Sales Taxes and Charges Template
+	3. taxes: Custom array of tax entries with charge_type, account_head, rate, etc.
 
-	Example taxes array:
-	[
-		{
-			"charge_type": "On Net Total",
-			"account_head": "VAT 15% - GSS",
-			"rate": 15,
-			"description": "VAT 15%"
-		},
-		{
-			"charge_type": "On Net Total",
-			"account_head": "VAT 0% - GSS",
-			"rate": 0,
-			"description": "Zero Rated"
-		}
-	]
+	Tax ID mapping:
+	- 1 = Standard VAT 15%
+	- 2 = Zero Rated VAT 0%
 	"""
-	# Option 1: Use Sales Taxes and Charges Template
+	company = data.company
+
+	# Option 1: Use tax_id for simple tax selection
+	tax_id = data.get("tax_id")
+	if tax_id is not None:
+		template = _get_tax_template_by_id(tax_id, company)
+		if template:
+			_apply_tax_template_to_invoice(invoice, template)
+			return
+		else:
+			frappe.log_error(
+				message=f"No tax template found for tax_id={tax_id}, company={company}",
+				title="Tax Template Not Found"
+			)
+
+	# Option 2: Use Sales Taxes and Charges Template by name
 	if data.get("taxes_and_charges"):
 		template_name = data.get("taxes_and_charges")
-		if frappe.db.exists("Sales Taxes and Charges Template", template_name):
-			invoice.taxes_and_charges = template_name
-			# Get taxes from template
-			template = frappe.get_doc("Sales Taxes and Charges Template", template_name)
-			for tax in template.taxes:
-				invoice.append("taxes", {
-					"charge_type": tax.charge_type,
-					"account_head": tax.account_head,
-					"rate": tax.rate,
-					"description": tax.description,
-					"included_in_print_rate": tax.included_in_print_rate,
-					"cost_center": tax.cost_center
-				})
+		template = _find_tax_template(template_name, company)
+		if template:
+			_apply_tax_template_to_invoice(invoice, template)
 			return
 		else:
 			frappe.msgprint(
-				_("Tax template '{0}' not found. Using custom taxes if provided.").format(template_name),
+				_("Tax template '{0}' not found. Trying default template.").format(template_name),
 				indicator="orange"
 			)
 
-	# Option 2: Use custom taxes array
+	# Option 3: Use custom taxes array
 	taxes = data.get("taxes")
 	if taxes and isinstance(taxes, list):
 		for tax_data in taxes:
@@ -466,24 +463,121 @@ def _add_invoice_taxes(invoice, data):
 				})
 		return
 
-	# Option 3: Try to get default tax template from company
+	# Option 4: Try to get default tax template from company
 	default_template = frappe.db.get_value(
 		"Sales Taxes and Charges Template",
-		{"company": data.company, "is_default": 1},
+		{"company": company, "is_default": 1},
 		"name"
 	)
 	if default_template:
-		invoice.taxes_and_charges = default_template
 		template = frappe.get_doc("Sales Taxes and Charges Template", default_template)
-		for tax in template.taxes:
-			invoice.append("taxes", {
-				"charge_type": tax.charge_type,
-				"account_head": tax.account_head,
-				"rate": tax.rate,
-				"description": tax.description,
-				"included_in_print_rate": tax.included_in_print_rate,
-				"cost_center": tax.cost_center
-			})
+		_apply_tax_template_to_invoice(invoice, template)
+		return
+
+	# Option 5: Try ANY tax template for this company
+	any_template = frappe.db.get_value(
+		"Sales Taxes and Charges Template",
+		{"company": company},
+		"name"
+	)
+	if any_template:
+		template = frappe.get_doc("Sales Taxes and Charges Template", any_template)
+		_apply_tax_template_to_invoice(invoice, template)
+		frappe.msgprint(
+			_("Using tax template '{0}' as fallback.").format(any_template),
+			indicator="blue"
+		)
+
+
+def _get_tax_template_by_id(tax_id, company):
+	"""Get tax template by simple tax_id
+
+	Tax ID mapping:
+	- 1 = 15% VAT (Standard Rate)
+	- 2 = 0% VAT (Zero Rated)
+	"""
+	tax_id = str(tax_id).strip()
+
+	# Define tax rate mapping
+	tax_id_to_rate = {
+		"1": 15,  # Standard VAT 15%
+		"2": 0,   # Zero Rated 0%
+	}
+
+	target_rate = tax_id_to_rate.get(tax_id)
+	if target_rate is None:
+		return None
+
+	# Search patterns based on rate
+	if target_rate == 15:
+		search_patterns = ["15", "standard", "vat 15"]
+	else:
+		search_patterns = ["0", "zero", "exempt"]
+
+	# Get all templates for this company
+	templates = frappe.get_all(
+		"Sales Taxes and Charges Template",
+		filters={"company": company},
+		fields=["name"]
+	)
+
+	# Strategy 1: Find by name pattern
+	for template in templates:
+		template_name_lower = template.name.lower()
+		for pattern in search_patterns:
+			if pattern in template_name_lower:
+				return frappe.get_doc("Sales Taxes and Charges Template", template.name)
+
+	# Strategy 2: Find by tax rate in template
+	for template in templates:
+		template_doc = frappe.get_doc("Sales Taxes and Charges Template", template.name)
+		for tax_row in template_doc.taxes:
+			if flt(tax_row.rate) == target_rate:
+				return template_doc
+
+	return None
+
+
+def _find_tax_template(template_name, company):
+	"""Find tax template by name, trying various patterns"""
+	# Try exact match
+	if frappe.db.exists("Sales Taxes and Charges Template", template_name):
+		return frappe.get_doc("Sales Taxes and Charges Template", template_name)
+
+	# Try with company abbreviation
+	company_abbr = frappe.get_cached_value("Company", company, "abbr")
+	if company_abbr:
+		template_with_abbr = f"{template_name} - {company_abbr}"
+		if frappe.db.exists("Sales Taxes and Charges Template", template_with_abbr):
+			return frappe.get_doc("Sales Taxes and Charges Template", template_with_abbr)
+
+	# Try partial match
+	templates = frappe.get_all(
+		"Sales Taxes and Charges Template",
+		filters={"company": company},
+		fields=["name"]
+	)
+
+	template_name_lower = template_name.lower()
+	for template in templates:
+		if template_name_lower in template.name.lower():
+			return frappe.get_doc("Sales Taxes and Charges Template", template.name)
+
+	return None
+
+
+def _apply_tax_template_to_invoice(invoice, template):
+	"""Apply a Sales Taxes and Charges Template to the invoice"""
+	invoice.taxes_and_charges = template.name
+	for tax in template.taxes:
+		invoice.append("taxes", {
+			"charge_type": tax.charge_type,
+			"account_head": tax.account_head,
+			"rate": tax.rate,
+			"description": tax.description,
+			"included_in_print_rate": tax.included_in_print_rate,
+			"cost_center": tax.cost_center
+		})
 
 
 def _create_invoice(data, customer):
