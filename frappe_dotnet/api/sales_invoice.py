@@ -37,6 +37,7 @@ def create_sales_invoice(**kwargs):
 	- pincode: Postal/ZIP code
 	- posting_date: Default is today
 	- due_date: Payment due date
+	- invoice_number: Custom invoice number (will be used as the Sales Invoice name/ID)
 	- qr_code: QR code data for ZATCA compliance
 	- additional_fields: Dictionary of custom field values
 
@@ -467,6 +468,18 @@ def _create_invoice(data, customer):
 			"taxes": []
 		})
 
+		# Store custom invoice number for later renaming
+		custom_invoice_number = None
+		if data.get("invoice_number"):
+			custom_invoice_number = str(data.get("invoice_number")).strip()
+
+			# Check if invoice with this name already exists
+			if frappe.db.exists("Sales Invoice", custom_invoice_number):
+				frappe.throw(
+					_("Sales Invoice with number '{0}' already exists. Please use a unique invoice number.").format(custom_invoice_number),
+					frappe.DuplicateEntryError
+				)
+
 		# Add items
 		for item_data in data.get("items"):
 			_add_invoice_item(invoice, item_data, data.company)
@@ -482,6 +495,13 @@ def _create_invoice(data, customer):
 
 		# Insert and submit if requested
 		invoice.insert(ignore_permissions=False)
+
+		# Rename invoice to custom invoice number if provided
+		if custom_invoice_number:
+			old_name = invoice.name
+			frappe.rename_doc("Sales Invoice", old_name, custom_invoice_number, force=True)
+			invoice.name = custom_invoice_number
+			invoice.reload()
 
 		if data.get("submit_invoice"):
 			invoice.submit()
