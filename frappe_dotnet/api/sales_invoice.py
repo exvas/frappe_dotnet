@@ -112,24 +112,37 @@ def _parse_request_data(kwargs):
 
 	# Always try to get data from request JSON body
 	# Frappe doesn't always pass nested arrays through kwargs properly
-	if frappe.request and frappe.request.data:
+	request_json = None
+	if frappe.request:
 		try:
-			request_json = json.loads(frappe.request.data)
-			if isinstance(request_json, dict):
-				# Merge request JSON with data (request body values fill in missing fields)
-				for key, value in request_json.items():
-					# Always use request body for items since kwargs doesn't handle arrays well
-					if key == "items" or key not in data or data.get(key) is None:
-						data[key] = value
-		except (json.JSONDecodeError, AttributeError) as e:
+			# Try using Flask's get_json() first (handles content-type and encoding)
+			if hasattr(frappe.request, 'get_json'):
+				request_json = frappe.request.get_json(silent=True)
+
+			# Fallback to manual parsing if get_json didn't work
+			if not request_json and frappe.request.data:
+				raw_data = frappe.request.data
+				# Handle bytes
+				if isinstance(raw_data, bytes):
+					raw_data = raw_data.decode('utf-8')
+				if raw_data:
+					request_json = json.loads(raw_data)
+		except (json.JSONDecodeError, AttributeError, UnicodeDecodeError) as e:
 			frappe.log_error(
-				message=f"Failed to parse request JSON: {str(e)}\nRaw data: {frappe.request.data}",
+				message=f"Failed to parse request JSON: {str(e)}\nRaw data type: {type(frappe.request.data)}\nRaw data: {frappe.request.data}",
 				title="Sales Invoice API - JSON Parse Error"
 			)
 
+	# Merge request JSON with data
+	if request_json and isinstance(request_json, dict):
+		for key, value in request_json.items():
+			# Always use request body for items since kwargs doesn't handle arrays well
+			if key == "items" or key not in data or data.get(key) is None:
+				data[key] = value
+
 	# Debug log to help troubleshoot data format issues
 	frappe.log_error(
-		message=f"Received kwargs: {type(kwargs)}\nItems type: {type(data.get('items'))}\nItems value: {data.get('items')}",
+		message=f"Received kwargs keys: {list(kwargs.keys())}\nItems type: {type(data.get('items'))}\nItems value: {data.get('items')}\nRequest JSON: {request_json}",
 		title="Sales Invoice API - Request Data Debug"
 	)
 
