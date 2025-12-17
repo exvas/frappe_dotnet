@@ -40,11 +40,17 @@ def create_sales_invoice(**kwargs):
 	- qr_code: QR code data for ZATCA compliance
 	- additional_fields: Dictionary of custom field values
 
+	Tax Options (use one of these):
+	- taxes_and_charges: Name of Sales Taxes and Charges Template (e.g., "Saudi VAT 15%")
+	- taxes: Custom array of tax entries:
+		[{"charge_type": "On Net Total", "account_head": "VAT 15% - GSS", "rate": 15, "description": "VAT 15%"}]
+	- If neither provided, uses company's default tax template
+
 	Optional Item Fields (for auto-creation):
 	- items[].item_name: Item name (defaults to item_code)
 	- items[].item_group: Item group (defaults to "Products")
 	- items[].uom: Unit of measure (defaults to "Nos")
-	- items[].item_tax_template: Tax template for the item
+	- items[].item_tax_template: Item Tax Template for per-item tax rates (e.g., "VAT 15%", "VAT 0%")
 	- items[].tax_category: Tax category for the item
 
 	Returns:
@@ -354,6 +360,92 @@ def _create_customer_address(customer, data):
 		)
 
 
+def _add_invoice_taxes(invoice, data):
+	"""Add taxes to the invoice from template or custom taxes array
+
+	Supports:
+	1. taxes_and_charges: Name of Sales Taxes and Charges Template
+	2. taxes: Custom array of tax entries with charge_type, account_head, rate, etc.
+
+	Example taxes array:
+	[
+		{
+			"charge_type": "On Net Total",
+			"account_head": "VAT 15% - GSS",
+			"rate": 15,
+			"description": "VAT 15%"
+		},
+		{
+			"charge_type": "On Net Total",
+			"account_head": "VAT 0% - GSS",
+			"rate": 0,
+			"description": "Zero Rated"
+		}
+	]
+	"""
+	# Option 1: Use Sales Taxes and Charges Template
+	if data.get("taxes_and_charges"):
+		template_name = data.get("taxes_and_charges")
+		if frappe.db.exists("Sales Taxes and Charges Template", template_name):
+			invoice.taxes_and_charges = template_name
+			# Get taxes from template
+			template = frappe.get_doc("Sales Taxes and Charges Template", template_name)
+			for tax in template.taxes:
+				invoice.append("taxes", {
+					"charge_type": tax.charge_type,
+					"account_head": tax.account_head,
+					"rate": tax.rate,
+					"description": tax.description,
+					"included_in_print_rate": tax.included_in_print_rate,
+					"cost_center": tax.cost_center
+				})
+			return
+		else:
+			frappe.msgprint(
+				_("Tax template '{0}' not found. Using custom taxes if provided.").format(template_name),
+				indicator="orange"
+			)
+
+	# Option 2: Use custom taxes array
+	taxes = data.get("taxes")
+	if taxes and isinstance(taxes, list):
+		for tax_data in taxes:
+			if isinstance(tax_data, dict):
+				# Validate required fields
+				if not tax_data.get("account_head"):
+					frappe.throw(_("Tax entry missing required field: account_head"))
+
+				invoice.append("taxes", {
+					"charge_type": tax_data.get("charge_type", "On Net Total"),
+					"account_head": tax_data.get("account_head"),
+					"rate": flt(tax_data.get("rate", 0)),
+					"description": tax_data.get("description", ""),
+					"included_in_print_rate": tax_data.get("included_in_print_rate", 0),
+					"cost_center": tax_data.get("cost_center"),
+					"tax_amount": flt(tax_data.get("tax_amount", 0)) if tax_data.get("tax_amount") else None
+				})
+		return
+
+	# Option 3: Try to get default tax template from company
+	default_template = frappe.db.get_value(
+		"Sales Taxes and Charges Template",
+		{"company": data.company, "is_default": 1},
+		"name"
+	)
+	if default_template:
+		invoice.taxes_and_charges = default_template
+		template = frappe.get_doc("Sales Taxes and Charges Template", default_template)
+		for tax in template.taxes:
+			invoice.append("taxes", {
+				"charge_type": tax.charge_type,
+				"account_head": tax.account_head,
+				"rate": tax.rate,
+				"description": tax.description,
+				"included_in_print_rate": tax.included_in_print_rate,
+				"cost_center": tax.cost_center
+			})
+
+
 def _create_invoice(data, customer):
 	"""Create the sales invoice document"""
 	try:
@@ -364,16 +456,20 @@ def _create_invoice(data, customer):
 			"posting_date": data.get("posting_date", nowdate()),
 			"due_date": data.get("due_date"),
 			"currency": data.get("currency") or frappe.get_cached_value("Company", data.company, "default_currency"),
-			"items": []
+			"items": [],
+			"taxes": []
 		})
 
 		# Add items
 		for item_data in data.get("items"):
 			_add_invoice_item(invoice, item_data, data.company)
 
+		# Add taxes - either from template or custom taxes array
+		_add_invoice_taxes(invoice, data)
+
 		# Add additional custom fields
 		if data.get("additional_fields"):
-			for field, value in data.additional_fields.items():
+			for field, value in data.get("additional_fields").items():
 				if invoice.meta.has_field(field):
 					invoice.set(field, value)
 
@@ -485,7 +581,8 @@ def _add_invoice_item(invoice, item_data, company):
 	if not rate:
 		rate = flt(item_data.get("price_list_rate", 0))
 
-	invoice.append("items", {
+	# Build item row
+	item_row = {
 		"item_code": item_code,
 		"item_name": item_data.get("item_name") or item.item_name,
 		"description": item_data.get("description") or item.description,
@@ -496,7 +593,14 @@ def _add_invoice_item(invoice, item_data, company):
 		"income_account": item_data.get("income_account"),
 		"cost_center": item_data.get("cost_center"),
 		"discount_percentage": flt(item_data.get("discount_percentage", 0))
-	})
+	}
+
+	# Add item-level tax template if provided
+	# This allows different tax rates per item (e.g., 15% VAT vs 0% exempt)
+	if item_data.get("item_tax_template"):
+		item_row["item_tax_template"] = item_data.get("item_tax_template")
+
+	invoice.append("items", item_row)
 
 
 def _get_default_warehouse(company):
