@@ -900,12 +900,14 @@ def _get_item_tax_template_from_code(tax_code, company):
 	# Map tax codes to search patterns and rates
 	tax_code_mapping = {
 		# Standard Rate 15%
-		"S": {"patterns": ["15", "standard", "vat 15"], "rate": 15},
-		"01": {"patterns": ["15", "standard", "vat 15"], "rate": 15},
-		"05": {"patterns": ["15", "standard", "vat 15"], "rate": 15},
+		"S": {"patterns": ["vat 15", "15%", "15 -", "standard"], "rate": 15},
+		"01": {"patterns": ["vat 15", "15%", "15 -", "standard"], "rate": 15},
+		"05": {"patterns": ["vat 15", "15%", "15 -", "standard"], "rate": 15},
+		"1": {"patterns": ["vat 15", "15%", "15 -", "standard"], "rate": 15},  # Simple format
 		# Zero Rated 0%
-		"Z": {"patterns": ["0", "zero", "vat 0"], "rate": 0},
-		"02": {"patterns": ["0", "zero", "vat 0"], "rate": 0},
+		"Z": {"patterns": ["vat 0", "0%", "0 -", "zero"], "rate": 0},
+		"02": {"patterns": ["vat 0", "0%", "0 -", "zero"], "rate": 0},
+		"2": {"patterns": ["vat 0", "0%", "0 -", "zero"], "rate": 0},  # Simple format
 		# Exempt
 		"E": {"patterns": ["exempt", "0"], "rate": 0},
 		"03": {"patterns": ["exempt", "0"], "rate": 0},
