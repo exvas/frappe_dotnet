@@ -606,9 +606,10 @@ def _create_invoice(data, customer):
 					frappe.DuplicateEntryError
 				)
 
-		# Add items
+		# Add items - pass tax_id from invoice level to apply Item Tax Template
+		invoice_tax_id = data.get("tax_id")
 		for item_data in data.get("items"):
-			_add_invoice_item(invoice, item_data, data.company)
+			_add_invoice_item(invoice, item_data, data.company, invoice_tax_id)
 
 		# Add taxes - either from template or custom taxes array
 		_add_invoice_taxes(invoice, data)
@@ -727,8 +728,15 @@ def _auto_create_item(item_code, item_data, company):
 		)
 
 
-def _add_invoice_item(invoice, item_data, company):
-	"""Add an item to the invoice"""
+def _add_invoice_item(invoice, item_data, company, invoice_tax_id=None):
+	"""Add an item to the invoice
+
+	Args:
+		invoice: Sales Invoice document
+		item_data: Item data dictionary
+		company: Company name
+		invoice_tax_id: Tax ID from invoice level (1=15%, 2=0%) to apply Item Tax Template
+	"""
 	item_code = item_data.get("item_code")
 
 	# Check if item exists, if not create it
@@ -764,32 +772,31 @@ def _add_invoice_item(invoice, item_data, company):
 	}
 
 	# Handle item-level tax template
-	# Supports: direct template name OR tax_code mapping (e.g., "01" = 0%, "05" = 15%)
-	item_tax_template = _resolve_item_tax_template(item_data, company)
+	# Priority: item-level tax_code > item-level item_tax_template > invoice-level tax_id
+	item_tax_template = _resolve_item_tax_template(item_data, company, invoice_tax_id)
 	if item_tax_template:
 		item_row["item_tax_template"] = item_tax_template
 
 	invoice.append("items", item_row)
 
 
-def _resolve_item_tax_template(item_data, company):
-	"""Resolve item tax template from direct name or tax code
+def _resolve_item_tax_template(item_data, company, invoice_tax_id=None):
+	"""Resolve item tax template from direct name, tax code, or invoice-level tax_id
 
-	Supports:
-	1. item_tax_template: Direct template name (e.g., "VAT 15% - GSS")
-	2. tax_code: ZATCA tax category code that maps to template
-	   - "01" or "S" = Standard Rate (15%)
-	   - "02" or "Z" = Zero Rated (0%)
-	   - "03" or "E" = Exempt
-	   - "04" or "O" = Out of Scope
-	   - "05" = Standard Rate 15% (legacy)
+	Priority order:
+	1. item_tax_template: Direct template name (e.g., "VAT 15 - GSS")
+	2. tax_code: ZATCA tax category code (e.g., "01", "05" for 15%, "02" for 0%)
+	3. invoice_tax_id: Invoice-level tax ID (1=15%, 2=0%)
 
-	The function searches for matching Item Tax Template by:
-	1. Exact name match
-	2. Template containing the tax code
-	3. Template for the company with matching rate
+	Args:
+		item_data: Item data dictionary
+		company: Company name
+		invoice_tax_id: Tax ID from invoice level (1=15%, 2=0%)
+
+	Returns:
+		Item Tax Template name or None
 	"""
-	# Option 1: Direct template name provided
+	# Option 1: Direct template name provided at item level
 	if item_data.get("item_tax_template"):
 		template_name = item_data.get("item_tax_template")
 		# Check if it exists (with or without company suffix)
@@ -802,15 +809,81 @@ def _resolve_item_tax_template(item_data, company):
 			if frappe.db.exists("Item Tax Template", template_with_company):
 				return template_with_company
 
-	# Option 2: Tax code provided - map to template
+	# Option 2: Tax code provided at item level - map to template
 	tax_code = item_data.get("tax_code")
 	if tax_code:
-		return _get_tax_template_from_code(tax_code, company)
+		return _get_item_tax_template_from_code(tax_code, company)
+
+	# Option 3: Use invoice-level tax_id to find Item Tax Template
+	if invoice_tax_id is not None:
+		return _get_item_tax_template_by_tax_id(invoice_tax_id, company)
 
 	return None
 
 
-def _get_tax_template_from_code(tax_code, company):
+def _get_item_tax_template_by_tax_id(tax_id, company):
+	"""Get Item Tax Template by invoice-level tax_id
+
+	Tax ID mapping:
+	- 1 = 15% VAT (Standard Rate) - finds Item Tax Template with 15% rate
+	- 2 = 0% VAT (Zero Rated) - finds Item Tax Template with 0% rate
+
+	Args:
+		tax_id: Tax ID (1 or 2)
+		company: Company name
+
+	Returns:
+		Item Tax Template name or None
+	"""
+	tax_id = str(tax_id).strip()
+
+	# Map tax_id to target rate
+	tax_id_to_rate = {
+		"1": 15,  # Standard VAT 15%
+		"2": 0,   # Zero Rated 0%
+	}
+
+	target_rate = tax_id_to_rate.get(tax_id)
+	if target_rate is None:
+		return None
+
+	# Search patterns based on rate
+	if target_rate == 15:
+		search_patterns = ["vat 15", "15%", "15 -", "standard"]
+	else:
+		search_patterns = ["vat 0", "0%", "0 -", "zero"]
+
+	# Get all Item Tax Templates for this company
+	templates = frappe.get_all(
+		"Item Tax Template",
+		filters={"company": company},
+		fields=["name"]
+	)
+
+	# Strategy 1: Find by name pattern
+	for template in templates:
+		template_name_lower = template.name.lower()
+		for pattern in search_patterns:
+			if pattern in template_name_lower:
+				return template.name
+
+	# Strategy 2: Find by tax rate in template
+	for template in templates:
+		template_doc = frappe.get_cached_doc("Item Tax Template", template.name)
+		for tax_row in template_doc.taxes:
+			if flt(tax_row.tax_rate) == target_rate:
+				return template.name
+
+	# Log if not found
+	frappe.log_error(
+		message=f"No Item Tax Template found for tax_id={tax_id} (rate={target_rate}%), company={company}. Available templates: {[t.name for t in templates]}",
+		title="Item Tax Template Not Found"
+	)
+
+	return None
+
+
+def _get_item_tax_template_from_code(tax_code, company):
 	"""Map ZATCA tax category code to Item Tax Template
 
 	ZATCA Tax Category Codes:
