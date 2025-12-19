@@ -96,6 +96,9 @@ def create_sales_invoice(**kwargs):
 		# Commit the transaction
 		frappe.db.commit()
 
+		# Get ZATCA status from Sales Invoice Additional Fields (if exists)
+		zatca_info = _get_zatca_info(invoice.name)
+
 		return {
 			"success": True,
 			"message": _("Sales Invoice {0} created and submitted successfully").format(invoice.name) if invoice.docstatus == 1 else _("Sales Invoice {0} created as Draft").format(invoice.name),
@@ -106,7 +109,10 @@ def create_sales_invoice(**kwargs):
 			"net_total": invoice.net_total,
 			"total_taxes": invoice.total_taxes_and_charges,
 			"status": "Submitted" if invoice.docstatus == 1 else "Draft",
-			"posting_date": str(invoice.posting_date)
+			"posting_date": str(invoice.posting_date),
+			"zatca_status": zatca_info.get("integration_status"),
+			"zatca_uuid": zatca_info.get("uuid"),
+			"zatca_qr_code": zatca_info.get("qr_code")
 		}
 
 	except frappe.ValidationError as e:
@@ -151,6 +157,32 @@ def _validate_api_auth():
 	"""Validate API key authentication"""
 	if frappe.session.user == "Guest":
 		frappe.throw(_("Authentication required. Please provide valid API credentials."), frappe.AuthenticationError)
+
+
+def _get_zatca_info(invoice_name):
+	"""Get ZATCA information from Sales Invoice Additional Fields
+
+	Returns dict with:
+	- integration_status: ZATCA integration status (e.g., "Reported", "Cleared", "Rejected")
+	- uuid: ZATCA UUID
+	- qr_code: QR code string (Base64 encoded TLV data)
+	"""
+	try:
+		additional_fields = frappe.db.get_value(
+			"Sales Invoice Additional Fields",
+			{"invoice": invoice_name, "invoice_doctype": "Sales Invoice", "is_latest": 1},
+			["integration_status", "uuid", "qr_code"],
+			as_dict=True
+		)
+
+		if additional_fields:
+			return additional_fields
+
+		return {"integration_status": None, "uuid": None, "qr_code": None}
+
+	except Exception:
+		# If the doctype doesn't exist (KSA Compliance not installed), return empty
+		return {"integration_status": None, "uuid": None, "qr_code": None}
 
 
 def _parse_request_data(kwargs):
