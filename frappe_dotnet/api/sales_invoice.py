@@ -1082,3 +1082,77 @@ def update_invoice_qr_code(invoice_name, qr_code):
 	except Exception as e:
 		frappe.db.rollback()
 		return _error_response(_("Failed to update QR code: {0}").format(str(e)))
+
+
+@frappe.whitelist(allow_guest=False)
+def get_invoice_qr_code(invoice_name):
+	"""
+	Get QR code for a Sales Invoice from Sales Invoice Additional Fields (KSA Compliance)
+
+	Parameters:
+	- invoice_name: Sales Invoice ID
+
+	Returns:
+	- success: Boolean
+	- message: Success or error message
+	- qr_code: QR code string (Base64 encoded TLV data)
+	- uuid: ZATCA UUID
+	- integration_status: ZATCA integration status
+	- invoice_name: Invoice name
+	"""
+	try:
+		_validate_api_auth()
+
+		if not invoice_name:
+			return _error_response(_("Invoice name is required"))
+
+		if not frappe.db.exists("Sales Invoice", invoice_name):
+			return _error_response(_("Sales Invoice '{0}' does not exist").format(invoice_name))
+
+		# Get QR code from Sales Invoice Additional Fields (KSA Compliance app)
+		additional_fields = frappe.db.get_value(
+			"Sales Invoice Additional Fields",
+			{"invoice": invoice_name, "invoice_doctype": "Sales Invoice"},
+			["name", "qr_code", "uuid", "integration_status", "is_latest"],
+			as_dict=True
+		)
+
+		if not additional_fields:
+			return {
+				"success": False,
+				"message": _("No ZATCA additional fields found for invoice {0}. Invoice may not have been submitted to ZATCA yet.").format(invoice_name),
+				"invoice_name": invoice_name,
+				"qr_code": None,
+				"uuid": None,
+				"integration_status": None
+			}
+
+		if not additional_fields.get("qr_code"):
+			return {
+				"success": False,
+				"message": _("QR code not yet generated for invoice {0}. ZATCA integration status: {1}").format(
+					invoice_name,
+					additional_fields.get("integration_status", "Unknown")
+				),
+				"invoice_name": invoice_name,
+				"qr_code": None,
+				"uuid": additional_fields.get("uuid"),
+				"integration_status": additional_fields.get("integration_status")
+			}
+
+		return {
+			"success": True,
+			"message": _("QR code retrieved successfully for invoice {0}").format(invoice_name),
+			"invoice_name": invoice_name,
+			"qr_code": additional_fields.get("qr_code"),
+			"uuid": additional_fields.get("uuid"),
+			"integration_status": additional_fields.get("integration_status"),
+			"is_latest": additional_fields.get("is_latest")
+		}
+
+	except Exception as e:
+		frappe.log_error(
+			message=f"Failed to get QR code for invoice {invoice_name}: {str(e)}\n{frappe.get_traceback()}",
+			title="Get Invoice QR Code Failed"
+		)
+		return _error_response(_("Failed to get QR code: {0}").format(str(e)))
