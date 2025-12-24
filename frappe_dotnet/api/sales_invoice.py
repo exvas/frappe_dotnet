@@ -170,7 +170,7 @@ def _get_zatca_info(invoice_name):
 	try:
 		additional_fields = frappe.db.get_value(
 			"Sales Invoice Additional Fields",
-			{"invoice": invoice_name, "invoice_doctype": "Sales Invoice", "is_latest": 1},
+			{"sales_invoice": invoice_name, "invoice_doctype": "Sales Invoice", "is_latest": 1},
 			["integration_status", "uuid", "qr_code"],
 			as_dict=True
 		)
@@ -1158,7 +1158,7 @@ def get_invoice_qr_code(invoice_name):
 		# Get QR code from Sales Invoice Additional Fields (KSA Compliance app)
 		additional_fields = frappe.db.get_value(
 			"Sales Invoice Additional Fields",
-			{"invoice": invoice_name, "invoice_doctype": "Sales Invoice"},
+			{"sales_invoice": invoice_name, "invoice_doctype": "Sales Invoice"},
 			["name", "qr_code", "uuid", "integration_status", "is_latest"],
 			as_dict=True
 		)
