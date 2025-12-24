@@ -704,7 +704,11 @@ def _create_invoice(data, customer):
 
 
 def _auto_create_item(item_code, item_data, company):
-	"""Automatically create an item if it doesn't exist"""
+	"""Automatically create an item if it doesn't exist
+
+	ZATCA requires item names to be at least 3 characters.
+	Priority for item_name: item_name > description > item_code
+	"""
 	try:
 		# Determine item group
 		item_group = item_data.get("item_group", "Products")
@@ -713,13 +717,23 @@ def _auto_create_item(item_code, item_data, company):
 		if not frappe.db.exists("Item Group", item_group):
 			item_group = "All Item Groups"
 
+		# Determine item name - ZATCA requires minimum 3 characters
+		# Priority: item_name > description > item_code
+		item_name = item_data.get("item_name")
+		if not item_name or len(str(item_name).strip()) < 3:
+			# Use description if item_name is missing or too short
+			item_name = item_data.get("description")
+		if not item_name or len(str(item_name).strip()) < 3:
+			# Fallback to item_code
+			item_name = item_code
+
 		# Create the item
 		item = frappe.get_doc({
 			"doctype": "Item",
 			"item_code": item_code,
-			"item_name": item_data.get("item_name") or item_code,
+			"item_name": item_name,
 			"item_group": item_group,
-			"description": item_data.get("description") or item_code,
+			"description": item_data.get("description") or item_name,
 			"stock_uom": item_data.get("uom", "Nos"),
 			"is_stock_item": 1,
 			"maintain_stock": 1,
